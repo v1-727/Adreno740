@@ -16,7 +16,7 @@ static void readBack(const ArmSmmu4KIo *io,const ArmSmmu4KProgramResult *program
     io->read64(io->cookie,size_t(program->context_offset)+0x20,&r->ttbr0);
 }
 IOReturn NativeAdrenoGmuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,unsigned asid,
-    unsigned slot,uint16_t sid,void (*progress)(uint32_t),NativeAdrenoGmuContextReport *report)
+    unsigned slot,uint16_t sid,uint16_t mask,void (*progress)(uint32_t),NativeAdrenoGmuContextReport *report)
 {
     if(!report)return kIOReturnBadArgument;
     *report={};
@@ -65,7 +65,7 @@ IOReturn NativeAdrenoGmuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
     if(!status) {
         step(Attach);
         const ArmSmmu4KStream route{slot,sid};
-        status=smmu_.attach(&route,1);
+        status=smmu_.attach(&route,1,&mask);
         const ArmSmmu4KStreamResult *s=smmu_.streamResult();
         report->route_status=smmu_.attachStatus();
         report->route_phase=s->phase;report->route_writes=s->writes;report->routes_verified=s->streams_verified;
@@ -90,20 +90,24 @@ IOReturn NativeAdrenoGmuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
 }
 /* Lives for the rest of the boot: the context bank points at its tables. */
 static NativeAdrenoGmuContext *board_context;
-extern "C" IOReturn NativeAdrenoGmuContextBringup(volatile uint8_t *smmu,size_t bytes,
-    unsigned bank,unsigned asid,unsigned slot,unsigned sid,void (*progress)(uint32_t),
+extern "C" IOReturn NativeAdrenoGmuContextBringupMasked(volatile uint8_t *smmu,size_t bytes,
+    unsigned bank,unsigned asid,unsigned slot,unsigned sid,unsigned mask,void (*progress)(uint32_t),
     NativeAdrenoGmuContextReport *report)
 {
     static ArmSmmu4KMmio mmio;
     static ArmSmmu4KIo io;
     NativeAdrenoGmuContext *&context=board_context;
-    if(!report || context || !smmu || !bytes || sid>0xffff)return kIOReturnBadArgument;
+    if(!report || context || !smmu || !bytes || sid>0xffff || mask>0xffff)return kIOReturnBadArgument;
     mmio={reinterpret_cast<volatile unsigned char *>(smmu),bytes};
     if(ArmSmmu4KBindMmio(&mmio,&io)!=ArmSmmu4KSuccess)return kIOReturnBadArgument;
     context=new NativeAdrenoGmuContext;
     if(!context)return kIOReturnNoMemory;
-    return context->bringUp(&io,bank,asid,slot,uint16_t(sid),progress,report);
+    return context->bringUp(&io,bank,asid,slot,uint16_t(sid),uint16_t(mask),progress,report);
 }
+extern "C" IOReturn NativeAdrenoGmuContextBringup(volatile uint8_t *smmu,size_t bytes,
+    unsigned bank,unsigned asid,unsigned slot,unsigned sid,void (*progress)(uint32_t),
+    NativeAdrenoGmuContextReport *report)
+{return NativeAdrenoGmuContextBringupMasked(smmu,bytes,bank,asid,slot,sid,0,progress,report);}
 extern "C" IOReturn NativeAdrenoGmuContextPayloads(NativeAdrenoGmuPayload out[5])
 {
     if(!out)return kIOReturnBadArgument;

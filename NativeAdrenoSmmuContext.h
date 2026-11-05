@@ -37,8 +37,9 @@ public:
         size_t leaf_budget,unsigned bank,unsigned asid,unsigned poll_budget,unsigned output_bits,unsigned input_bits);
     /* Reads actual IDs, programs and enables exactly this bank. */
     IOReturn program(const ArmSmmu4KIo *);
-    /* Attach the caller's exact stream routes to the programmed bank. */
-    IOReturn attach(const ArmSmmu4KStream *,size_t count);
+    /* Attach the caller's stream routes to the programmed bank. masks: each route's SMR mask (the iommus mask cell,
+     * ArmSmmu4KAttachMaskedStreams); nullptr attaches exact routes. */
+    IOReturn attach(const ArmSmmu4KStream *,size_t count,const uint16_t *masks=nullptr);
     /* Read-only observation of the owned enabled context. */
     IOReturn observe() const;
     /* Only after attach; leaves streams faulted by the caller's own recovery. */

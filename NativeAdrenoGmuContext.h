@@ -8,7 +8,7 @@
  * attach build it: allocate the payloads at their fixed GMU addresses, prepare a
  * native4K lower-region (TTBR0) table pool for the whole 0..2 GiB GMU space,
  * program one context bank, route the GMU stream to it, attach the VM and map the
- * payloads. Bank, ASID, SMR slot and stream ID are caller inputs. Every resource
+ * payloads. Bank, ASID, SMR slot, stream ID and its SMR mask are caller inputs. Every resource
  * is retained on every outcome; there is no teardown. Caller keeps CX powered and
  * the SMMU clocks running, and keeps the GMU halted (nothing is booted here). */
 struct NativeAdrenoGmuContextReport {
@@ -38,9 +38,13 @@ public:
     NativeAdrenoGmuContext()=default;
     NativeAdrenoGmuContext(const NativeAdrenoGmuContext &)=delete;
     NativeAdrenoGmuContext &operator=(const NativeAdrenoGmuContext &)=delete;
-    /* One attempt per object. progress (may be null) is called before each step. */
+    /* One attempt per object. progress (may be null) is called before each step. mask is the GMU stream's SMR mask (the
+     * mask cell of the gmu node's iommus, e.g. <&adreno_smmu 5 0x400> on sm8450); the overload without it routes exactly. */
     IOReturn bringUp(const ArmSmmu4KIo *io,unsigned bank,unsigned asid,unsigned slot,
-        uint16_t sid,void (*progress)(uint32_t step),NativeAdrenoGmuContextReport *report);
+        uint16_t sid,uint16_t mask,void (*progress)(uint32_t step),NativeAdrenoGmuContextReport *report);
+    IOReturn bringUp(const ArmSmmu4KIo *io,unsigned bank,unsigned asid,unsigned slot,
+        uint16_t sid,void (*progress)(uint32_t step),NativeAdrenoGmuContextReport *report)
+    {return bringUp(io,bank,asid,slot,sid,0,progress,report);}
     bool ready() const {return ready_;}
     NativeAdrenoGmuAllocator &allocator() {return gmu_;}
     NativeAdrenoVm &vm() {return vm_;}
@@ -49,6 +53,10 @@ public:
  * whole SMMU window and runs bringUp on a context that lives forever. */
 extern "C" IOReturn NativeAdrenoGmuContextBringup(volatile uint8_t *smmu,size_t bytes,
     unsigned bank,unsigned asid,unsigned slot,unsigned sid,void (*progress)(uint32_t),
+    NativeAdrenoGmuContextReport *report);
+/* The same with the GMU stream's SMR mask (NativeAdrenoGmuContextBringup is this with mask 0). */
+extern "C" IOReturn NativeAdrenoGmuContextBringupMasked(volatile uint8_t *smmu,size_t bytes,
+    unsigned bank,unsigned asid,unsigned slot,unsigned sid,unsigned mask,void (*progress)(uint32_t),
     NativeAdrenoGmuContextReport *report);
 /* The payloads of the context the board entry built, in ShengGmuConfig order (icache, dummy, debug,
  * log, hfi): physical base, size and GMU address of each physically contiguous object. Only after

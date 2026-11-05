@@ -28,11 +28,11 @@ IOReturn NativeAdrenoSmmuContext::program(const ArmSmmu4KIo *io)
     io_=*io;programmed_=true;
     return kIOReturnSuccess;
 }
-IOReturn NativeAdrenoSmmuContext::attach(const ArmSmmu4KStream *routes,size_t count)
+IOReturn NativeAdrenoSmmuContext::attach(const ArmSmmu4KStream *routes,size_t count,const uint16_t *masks)
 {
     if(!programmed_ || attached_ || poisoned_ || !routes || !count || count>8)
         return kIOReturnBadArgument;
-    const ArmSmmu4KStatus status=ArmSmmu4KAttachStreams(&io_,&streams_,routes,count,
+    const ArmSmmu4KStatus status=ArmSmmu4KAttachMaskedStreams(&io_,&streams_,routes,masks,unsigned(count),
         bank_,&config_,&routes_);
     attach_status_=status;
     if(status!=ArmSmmu4KSuccess) {poisoned_=true;return kIOReturnIOError;}

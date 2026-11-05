@@ -131,6 +131,25 @@ int main()
         CHECK(mmio[cb/4]==0x167);
         CHECK(report.smr==((1u<<31)|5) && (report.s2cr&0xff)==1 && (report.sctlr&1));
     }
+    /* The sm8450 GMU stream <&adreno_smmu 5 0x400>: the same context, its SMR carrying the mask (VALID|0x400<<16|5), and the
+     * observation through the VM attach and payload mapping expecting that masked route. */
+    {
+        reset();mmio[0x28/4]=0x5511;
+        NativeAdrenoGmuContext context;
+        NativeAdrenoGmuContextReport report;
+        CHECK(context.bringUp(&io,1,1,2,5,0x400,nullptr,&report)==kIOReturnSuccess && report.step==NativeAdrenoGmuContext::Ready);
+        CHECK(report.smr==((1u<<31)|(0x400u<<16)|5) && mmio[(0x800+8)/4]==report.smr && (report.s2cr&0xff)==1);
+        CHECK(report.routes_verified==1 && report.route_status==0 && report.spans==5);
+    }
+    /* A mask that overlaps a live route elsewhere (SID 0x405 translating through bank 3 in slot 0) is refused before any route
+     * write: slot 2 stays FAULT and invalid. */
+    {
+        reset();mmio[0x800/4]=(1u<<31)|0x405;mmio[0xc00/4]=3;
+        NativeAdrenoGmuContext context;
+        NativeAdrenoGmuContextReport report;
+        CHECK(context.bringUp(&io,1,1,2,5,0x400,nullptr,&report)!=kIOReturnSuccess && report.step==NativeAdrenoGmuContext::Attach);
+        CHECK(report.route_status==ArmSmmu4KOverlap && !report.route_writes && mmio[(0xc00+8)/4]==0x20000 && !(mmio[(0x800+8)/4]&(1u<<31)));
+    }
     /* Argument refusals touch nothing. */
     {
         reset();
@@ -159,7 +178,7 @@ int main()
         CHECK(NativeAdrenoGmuContextPayloads(nullptr)==kIOReturnBadArgument);
     }
     std::printf("PASS: 1 complete GMU context bring-up with exact routes and TTBR0, 1 non-FAULT S2CR, 1 ignored "
-        "context write, 1 enabled-bank refusal, 1 36-bit OAS context, 1 sheng-observed ID2/TCR2 context, 2 ID2 refusals, 5 argument refusals and 1 board entry with a stuck fault status over a software SMMU peer\n");
+        "context write, 1 enabled-bank refusal, 1 36-bit OAS context, 1 sheng-observed ID2/TCR2 context, 2 ID2 refusals, 5 argument refusals and 1 board entry with a stuck fault status over a software SMMU peer; 1 masked GMU route (SMR mask 0x400) and 1 masked-overlap refusal\n");
 }
 /* Physical-page maintenance (imported BOs): record it; no host page is touched. */
 /* Host double: the page attribute change of user BOs has no host equivalent (no host page is touched). */
